@@ -1,8 +1,10 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton,
     QLabel, QFileDialog, QLineEdit, QMessageBox,
-    QComboBox, QHBoxLayout, QListWidget, QListWidgetItem, QCheckBox
+    QComboBox, QHBoxLayout, QListWidget, QListWidgetItem, QCheckBox, QSizePolicy, QSpacerItem
 )
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
 from utils import estrai_info_da_pdf, genera_nome_file
 import os
 
@@ -10,66 +12,106 @@ class FatturaRenamer(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Rinomina Fatture PDF - Modalità Batch")
-        self.resize(600, 480)
+        self.resize(700, 520)
+
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #f5f7fa;
+                font-family: 'Segoe UI', sans-serif;
+                font-size: 13px;
+            }
+            QPushButton {
+                background-color: #0078d4;
+                color: white;
+                border-radius: 5px;
+                padding: 6px 12px;
+            }
+            QPushButton:hover {
+                background-color: #005fa1;
+            }
+            QLineEdit, QComboBox, QListWidget {
+                background-color: white;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                padding: 4px;
+            }
+            QLabel {
+                font-weight: bold;
+            }
+            QCheckBox {
+                margin-top: 5px;
+            }
+        """)
 
         self.file_paths = []
-
         self.layout = QVBoxLayout()
+        self.layout.setSpacing(10)
 
         self.layout.addWidget(QLabel("Seleziona uno o più file PDF e compila i campi:"))
 
-        self.tipo_layout = QHBoxLayout()
-        self.tipo_layout.addWidget(QLabel("Tipologia:"))
+        def crea_riga(label_txt, widget):
+            riga = QHBoxLayout()
+            label = QLabel(label_txt)
+            label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            label.setFixedWidth(90)
+            riga.addWidget(label)
+            riga.addWidget(widget)
+            return riga
+
+        # Campi di input
         self.tipo_combo = QComboBox()
         self.tipo_combo.addItems(["Fattura", "Nota di credito"])
-        self.tipo_layout.addWidget(self.tipo_combo)
-        self.layout.addLayout(self.tipo_layout)
+        self.layout.addLayout(crea_riga("Tipologia:", self.tipo_combo))
 
-        self.stagione_layout = QHBoxLayout()
-        self.stagione_layout.addWidget(QLabel("Stagione:"))
         self.stagione_combo = QComboBox()
         self.stagione_combo.addItems(["PE", "AI", "CONTINUATIVO"])
-        self.stagione_layout.addWidget(self.stagione_combo)
-        self.layout.addLayout(self.stagione_layout)
+        self.layout.addLayout(crea_riga("Stagione:", self.stagione_combo))
 
-        self.anno_layout = QHBoxLayout()
-        self.anno_layout.addWidget(QLabel("Anno:"))
         self.anno_input = QLineEdit()
         self.anno_input.setPlaceholderText("Es. 2025")
-        self.anno_layout.addWidget(self.anno_input)
-        self.layout.addLayout(self.anno_layout)
+        self.layout.addLayout(crea_riga("Anno:", self.anno_input))
 
-        self.genere_layout = QHBoxLayout()
-        self.genere_layout.addWidget(QLabel("Genere:"))
         self.genere_combo = QComboBox()
         self.genere_combo.addItems(["UOMO", "DONNA"])
-        self.genere_layout.addWidget(self.genere_combo)
-        self.layout.addLayout(self.genere_layout)
+        self.layout.addLayout(crea_riga("Genere:", self.genere_combo))
 
         self.cartella_checkbox = QCheckBox("Sposta i file in cartelle con nome del fornitore")
         self.layout.addWidget(self.cartella_checkbox)
 
-        self.button_select = QPushButton("Scegli PDF")
-        self.button_select.clicked.connect(self.apri_file_dialog)
-        self.layout.addWidget(self.button_select)
+        # Pulsanti file management
+        self.file_button_layout = QHBoxLayout()
 
+        self.button_select = QPushButton("📂 Scegli PDF")
+        self.button_select.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.button_select.clicked.connect(self.apri_file_dialog)
+
+        self.button_remove = QPushButton("🗑️ Rimuovi selezionato")
+        self.button_remove.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.button_remove.clicked.connect(self.rimuovi_file)
+
+        self.button_reset = QPushButton("🔄 Reset")
+        self.button_reset.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.button_reset.clicked.connect(self.reset_tutto)
+
+        self.file_button_layout.addWidget(self.button_select)
+        self.file_button_layout.addWidget(self.button_remove)
+        self.file_button_layout.addWidget(self.button_reset)
+        self.layout.addLayout(self.file_button_layout)
+
+        # Lista file
         self.file_list = QListWidget()
         self.file_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
         self.layout.addWidget(self.file_list)
 
-        self.button_remove = QPushButton("Rimuovi selezionato")
-        self.button_remove.clicked.connect(self.rimuovi_file)
-        self.layout.addWidget(self.button_remove)
-
-        self.button_reset = QPushButton("Reset campi e lista")
-        self.button_reset.clicked.connect(self.reset_tutto)
-        self.layout.addWidget(self.button_reset)
-
-        self.button_process = QPushButton("Avvia Rinomina")
+        # Pulsante di processo
+        self.button_process = QPushButton("🚀 Avvia Rinomina")
+        self.button_process.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.button_process.clicked.connect(self.processa_file)
         self.layout.addWidget(self.button_process)
 
+        # Output
         self.label_output = QLabel("")
+        self.label_output.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.layout.addWidget(self.label_output)
 
         self.setLayout(self.layout)
