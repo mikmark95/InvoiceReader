@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton,
     QLabel, QFileDialog, QLineEdit, QMessageBox,
-    QComboBox, QHBoxLayout
+    QComboBox, QHBoxLayout, QListWidget, QListWidgetItem
 )
 from utils import estrai_info_da_pdf, genera_nome_file
 import os
@@ -10,7 +10,9 @@ class FatturaRenamer(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Rinomina Fatture PDF - Modalità Batch")
-        self.resize(500, 300)
+        self.resize(600, 450)
+
+        self.file_paths = []
 
         self.layout = QVBoxLayout()
 
@@ -46,17 +48,55 @@ class FatturaRenamer(QWidget):
         self.layout.addLayout(self.genere_layout)
 
         self.button_select = QPushButton("Scegli PDF")
-        self.button_select.clicked.connect(self.seleziona_pdf_multipli)
+        self.button_select.clicked.connect(self.apri_file_dialog)
         self.layout.addWidget(self.button_select)
+
+        self.file_list = QListWidget()
+        self.file_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self.layout.addWidget(self.file_list)
+
+        self.button_remove = QPushButton("Rimuovi selezionato")
+        self.button_remove.clicked.connect(self.rimuovi_file)
+        self.layout.addWidget(self.button_remove)
+
+        self.button_reset = QPushButton("Reset campi e lista")
+        self.button_reset.clicked.connect(self.reset_tutto)
+        self.layout.addWidget(self.button_reset)
+
+        self.button_process = QPushButton("Avvia Rinomina")
+        self.button_process.clicked.connect(self.processa_file)
+        self.layout.addWidget(self.button_process)
 
         self.label_output = QLabel("")
         self.layout.addWidget(self.label_output)
 
         self.setLayout(self.layout)
 
-    def seleziona_pdf_multipli(self):
-        file_paths, _ = QFileDialog.getOpenFileNames(self, "Seleziona file PDF", "", "PDF Files (*.pdf)")
-        if not file_paths:
+    def apri_file_dialog(self):
+        files, _ = QFileDialog.getOpenFileNames(self, "Seleziona file PDF", "", "PDF Files (*.pdf)")
+        for path in files:
+            if path not in self.file_paths:
+                self.file_paths.append(path)
+                self.file_list.addItem(QListWidgetItem(os.path.basename(path)))
+
+    def rimuovi_file(self):
+        selected = self.file_list.currentRow()
+        if selected >= 0:
+            self.file_paths.pop(selected)
+            self.file_list.takeItem(selected)
+
+    def reset_tutto(self):
+        self.file_paths.clear()
+        self.file_list.clear()
+        self.anno_input.clear()
+        self.tipo_combo.setCurrentIndex(0)
+        self.stagione_combo.setCurrentIndex(0)
+        self.genere_combo.setCurrentIndex(0)
+        self.label_output.setText("")
+
+    def processa_file(self):
+        if not self.file_paths:
+            QMessageBox.warning(self, "Errore", "Nessun file selezionato.")
             return
 
         anno = self.anno_input.text().strip()
@@ -70,7 +110,7 @@ class FatturaRenamer(QWidget):
 
         success_count = 0
         fail_count = 0
-        for file_path in file_paths:
+        for file_path in self.file_paths:
             denominazione, numero_fattura, data_fattura = estrai_info_da_pdf(file_path)
             if all([denominazione, numero_fattura, data_fattura]):
                 nuovo_nome = genera_nome_file(

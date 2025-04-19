@@ -21,8 +21,6 @@ def estrai_info_da_pdf(path):
 
 
 def genera_nome_file(tipologia, numero_fattura, data_fattura, denominazione, stagione, anno, genere):
-    if stagione == 'CONTINUATIVA':
-        stagione = ''
     nome = f"{tipologia} {numero_fattura} DEL {data_fattura} {denominazione} {stagione} {anno} {genere}.pdf"
     caratteri_non_validi = r'<>:"/\\|?*'
     for c in caratteri_non_validi:
