@@ -25,5 +25,4 @@ def genera_nome_file(tipologia, numero_fattura, data_fattura, denominazione, sta
     caratteri_non_validi = r'<>:"/\\|?*'
     for c in caratteri_non_validi:
         nome = nome.replace(c, "")
-    # nome = nome.replace(" ", "_")
     return nome

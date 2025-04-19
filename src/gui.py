@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton,
     QLabel, QFileDialog, QLineEdit, QMessageBox,
-    QComboBox, QHBoxLayout, QListWidget, QListWidgetItem
+    QComboBox, QHBoxLayout, QListWidget, QListWidgetItem, QCheckBox
 )
 from utils import estrai_info_da_pdf, genera_nome_file
 import os
@@ -10,14 +10,13 @@ class FatturaRenamer(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Rinomina Fatture PDF - Modalità Batch")
-        self.resize(600, 450)
+        self.resize(600, 480)
 
         self.file_paths = []
 
         self.layout = QVBoxLayout()
 
-        self.layout.addWidget(QLabel("Seleziona uno o più file PDF e compila i campi:")
-)
+        self.layout.addWidget(QLabel("Seleziona uno o più file PDF e compila i campi:"))
 
         self.tipo_layout = QHBoxLayout()
         self.tipo_layout.addWidget(QLabel("Tipologia:"))
@@ -46,6 +45,9 @@ class FatturaRenamer(QWidget):
         self.genere_combo.addItems(["UOMO", "DONNA"])
         self.genere_layout.addWidget(self.genere_combo)
         self.layout.addLayout(self.genere_layout)
+
+        self.cartella_checkbox = QCheckBox("Sposta i file in cartelle con nome del fornitore")
+        self.layout.addWidget(self.cartella_checkbox)
 
         self.button_select = QPushButton("Scegli PDF")
         self.button_select.clicked.connect(self.apri_file_dialog)
@@ -92,6 +94,7 @@ class FatturaRenamer(QWidget):
         self.tipo_combo.setCurrentIndex(0)
         self.stagione_combo.setCurrentIndex(0)
         self.genere_combo.setCurrentIndex(0)
+        self.cartella_checkbox.setChecked(False)
         self.label_output.setText("")
 
     def processa_file(self):
@@ -107,6 +110,7 @@ class FatturaRenamer(QWidget):
         tipologia = "FATT" if self.tipo_combo.currentText() == "Fattura" else "NC"
         stagione = self.stagione_combo.currentText()
         genere = self.genere_combo.currentText()
+        usa_cartelle = self.cartella_checkbox.isChecked()
 
         success_count = 0
         fail_count = 0
@@ -116,7 +120,14 @@ class FatturaRenamer(QWidget):
                 nuovo_nome = genera_nome_file(
                     tipologia, numero_fattura, data_fattura, denominazione, stagione, anno, genere
                 )
-                nuovo_percorso = os.path.join(os.path.dirname(file_path), nuovo_nome)
+                base_dir = os.path.dirname(file_path)
+                destinazione = base_dir
+
+                if usa_cartelle:
+                    destinazione = os.path.join(base_dir, denominazione.replace(" ", "_"))
+                    os.makedirs(destinazione, exist_ok=True)
+
+                nuovo_percorso = os.path.join(destinazione, nuovo_nome)
                 os.rename(file_path, nuovo_percorso)
                 success_count += 1
             else:
