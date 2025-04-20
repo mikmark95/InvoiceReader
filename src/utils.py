@@ -33,7 +33,7 @@ def estrai_info_da_pdf(path):
     return None, None, None
 
 
-def genera_nome_file(tipologia, numero_fattura, data_fattura, denominazione, stagione, anno, genere):
+def genera_nome_file(tipologia, numero_fattura, data_fattura, denominazione, stagione, anno, genere, generico=False):
     """
     Genera un nome file standardizzato per la fattura in base ai parametri forniti.
 
@@ -48,11 +48,16 @@ def genera_nome_file(tipologia, numero_fattura, data_fattura, denominazione, sta
         stagione (str): Stagione di riferimento (es. "PE", "AI", "CONTINUATIVO")
         anno (str): Anno di riferimento
         genere (str): Genere di riferimento (es. "UOMO", "DONNA")
+        generico (bool, optional): Se True, usa un formato semplificato. Default False.
 
     Returns:
         str: Nome file standardizzato con estensione .pdf
     """
-    nome = f"{tipologia} {numero_fattura} DEL {data_fattura} {denominazione} {stagione} {anno} {genere}.pdf"
+    if generico:
+        nome = f"{denominazione} {numero_fattura} DEL {data_fattura}.pdf"
+    else:
+        nome = f"{tipologia} {numero_fattura} DEL {data_fattura} {denominazione} {stagione} {anno} {genere}.pdf"
+
     caratteri_non_validi = r'<>:"/\\|?*'
     for c in caratteri_non_validi:
         nome = nome.replace(c, "")
