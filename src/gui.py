@@ -92,6 +92,14 @@ class FatturaRenamer(QWidget):
         self.tipo_combo.addItems(["Fattura", "Nota di credito"])
         self.layout.addLayout(crea_riga("Tipologia:", self.tipo_combo))
 
+        # Checkbox Generico
+        self.generico_checkbox = QCheckBox("Generico")
+        self.generico_checkbox.stateChanged.connect(self.toggle_tipo_combo)
+        generico_layout = QHBoxLayout()
+        generico_layout.addSpacerItem(QSpacerItem(90, 0, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum))
+        generico_layout.addWidget(self.generico_checkbox)
+        self.layout.addLayout(generico_layout)
+
         self.stagione_combo = QComboBox()
         self.stagione_combo.addItems(["PE", "AI", "CONTINUATIVO"])
         self.layout.addLayout(crea_riga("Stagione:", self.stagione_combo))
@@ -167,19 +175,60 @@ class FatturaRenamer(QWidget):
             self.file_paths.pop(selected)
             self.file_list.takeItem(selected)
 
+    def toggle_tipo_combo(self, state):
+        """
+        Abilita o disabilita i campi di input in base allo stato della checkbox 'Generico'.
+        Quando la checkbox è selezionata, tutti i campi vengono disabilitati e visualizzati in grigio.
+
+        Args:
+            state (int): Stato della checkbox (Qt.Checked o Qt.Unchecked)
+        """
+        is_disabled = bool(state)
+
+        # Disabilita tutti i campi di input
+        self.tipo_combo.setEnabled(not is_disabled)
+        self.stagione_combo.setEnabled(not is_disabled)
+        self.anno_input.setEnabled(not is_disabled)
+        self.genere_combo.setEnabled(not is_disabled)
+
+        # Applica stile per evidenziare i campi disabilitati in grigio
+        if is_disabled:
+            self.tipo_combo.setStyleSheet("background-color: #e0e0e0; color: #707070;")
+            self.stagione_combo.setStyleSheet("background-color: #e0e0e0; color: #707070;")
+            self.anno_input.setStyleSheet("background-color: #e0e0e0; color: #707070;")
+            self.genere_combo.setStyleSheet("background-color: #e0e0e0; color: #707070;")
+        else:
+            self.tipo_combo.setStyleSheet("")
+            self.stagione_combo.setStyleSheet("")
+            self.anno_input.setStyleSheet("")
+            self.genere_combo.setStyleSheet("")
+
     def reset_tutto(self):
         """
         Reimposta tutti i campi dell'interfaccia ai valori predefiniti.
 
         Cancella la lista dei file, svuota i campi di input e reimposta
-        i menu a tendina ai valori iniziali.
+        i menu a tendina ai valori iniziali. Ripristina anche lo stile originale
+        di tutti i campi.
         """
         self.file_paths.clear()
         self.file_list.clear()
         self.anno_input.clear()
         self.tipo_combo.setCurrentIndex(0)
+        self.tipo_combo.setEnabled(True)
         self.stagione_combo.setCurrentIndex(0)
+        self.stagione_combo.setEnabled(True)
         self.genere_combo.setCurrentIndex(0)
+        self.genere_combo.setEnabled(True)
+        self.anno_input.setEnabled(True)
+
+        # Ripristina lo stile originale
+        self.tipo_combo.setStyleSheet("")
+        self.stagione_combo.setStyleSheet("")
+        self.anno_input.setStyleSheet("")
+        self.genere_combo.setStyleSheet("")
+
+        self.generico_checkbox.setChecked(False)
         self.cartella_checkbox.setChecked(False)
         self.label_output.setText("")
 
@@ -203,10 +252,12 @@ class FatturaRenamer(QWidget):
             return
 
         anno = self.anno_input.text().strip()
-        if not anno:
+        generico = self.generico_checkbox.isChecked()
+
+        # Se la checkbox "Generico" non è selezionata, verifica che l'anno sia stato inserito
+        if not anno and not generico:
             QMessageBox.warning(self, "Errore", "Inserisci l'anno prima di procedere.")
             return
-
         tipologia = "FATT" if self.tipo_combo.currentText() == "Fattura" else "NC"
         stagione = self.stagione_combo.currentText()
         genere = self.genere_combo.currentText()
@@ -218,7 +269,7 @@ class FatturaRenamer(QWidget):
             denominazione, numero_fattura, data_fattura = estrai_info_da_pdf(file_path)
             if all([denominazione, numero_fattura, data_fattura]):
                 nuovo_nome = genera_nome_file(
-                    tipologia, numero_fattura, data_fattura, denominazione, stagione, anno, genere
+                    tipologia, numero_fattura, data_fattura, denominazione, stagione, anno, genere, generico
                 )
                 base_dir = os.path.dirname(file_path)
                 destinazione = base_dir
