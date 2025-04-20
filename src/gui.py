@@ -6,6 +6,10 @@ Fornisce una finestra con controlli per selezionare file PDF, specificare parame
 per la rinomina e processare i file.
 """
 
+import os
+import logging
+import traceback
+from datetime import datetime
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton,
     QLabel, QFileDialog, QLineEdit, QMessageBox,
@@ -14,7 +18,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from utils import estrai_info_da_pdf, genera_nome_file
-import os
 
 class FatturaRenamer(QWidget):
     """
@@ -247,43 +250,111 @@ class FatturaRenamer(QWidget):
         Al termine, visualizza un riepilogo dei file elaborati con successo
         e di quelli non elaborati.
         """
-        if not self.file_paths:
-            QMessageBox.warning(self, "Errore", "Nessun file selezionato.")
-            return
+        try:
+            if not self.file_paths:
+                QMessageBox.warning(self, "Errore", "Nessun file selezionato.")
+                return
 
-        anno = self.anno_input.text().strip()
-        generico = self.generico_checkbox.isChecked()
+            anno = self.anno_input.text().strip()
+            generico = self.generico_checkbox.isChecked()
 
-        # Se la checkbox "Generico" non è selezionata, verifica che l'anno sia stato inserito
-        if not anno and not generico:
-            QMessageBox.warning(self, "Errore", "Inserisci l'anno prima di procedere.")
-            return
-        tipologia = "FATT" if self.tipo_combo.currentText() == "Fattura" else "NC"
-        stagione = self.stagione_combo.currentText()
-        genere = self.genere_combo.currentText()
-        usa_cartelle = self.cartella_checkbox.isChecked()
+            # Se la checkbox "Generico" non è selezionata, verifica che l'anno sia stato inserito
+            if not anno and not generico:
+                QMessageBox.warning(self, "Errore", "Inserisci l'anno prima di procedere.")
+                return
 
-        success_count = 0
-        fail_count = 0
-        for file_path in self.file_paths:
-            denominazione, numero_fattura, data_fattura = estrai_info_da_pdf(file_path)
-            if all([denominazione, numero_fattura, data_fattura]):
-                nuovo_nome = genera_nome_file(
-                    tipologia, numero_fattura, data_fattura, denominazione, stagione, anno, genere, generico
-                )
-                base_dir = os.path.dirname(file_path)
-                destinazione = base_dir
+            tipologia = "FATT" if self.tipo_combo.currentText() == "Fattura" else "NC"
+            stagione = self.stagione_combo.currentText()
+            genere = self.genere_combo.currentText()
+            usa_cartelle = self.cartella_checkbox.isChecked()
 
-                if usa_cartelle:
-                    destinazione = os.path.join(base_dir, denominazione.replace(" ", "_"))
-                    os.makedirs(destinazione, exist_ok=True)
+            # Log dei parametri di elaborazione
+            logging.info(f"Avvio elaborazione con parametri: tipologia={tipologia}, stagione={stagione}, "
+                        f"anno={anno}, genere={genere}, generico={generico}, usa_cartelle={usa_cartelle}")
+            logging.info(f"File da elaborare: {len(self.file_paths)}")
 
-                nuovo_percorso = os.path.join(destinazione, nuovo_nome)
-                os.rename(file_path, nuovo_percorso)
-                success_count += 1
-            else:
-                fail_count += 1
+            success_count = 0
+            fail_count = 0
+            error_files = []
 
-        self.label_output.setText(
-            f"✅ {success_count} file rinominati correttamente.\n❌ {fail_count} file non elaborati."
-        )
+            for file_path in self.file_paths:
+                try:
+                    logging.info(f"Elaborazione file: {file_path}")
+
+                    # Estrai informazioni dal PDF
+                    denominazione, numero_fattura, data_fattura = estrai_info_da_pdf(file_path)
+
+                    if all([denominazione, numero_fattura, data_fattura]):
+                        logging.info(f"Informazioni estratte: denominazione={denominazione}, "
+                                    f"numero_fattura={numero_fattura}, data_fattura={data_fattura}")
+
+                        # Genera il nuovo nome file
+                        nuovo_nome = genera_nome_file(
+                            tipologia, numero_fattura, data_fattura, denominazione, stagione, anno, genere, generico
+                        )
+                        logging.info(f"Nuovo nome generato: {nuovo_nome}")
+
+                        base_dir = os.path.dirname(file_path)
+                        destinazione = base_dir
+
+                        # Gestione delle cartelle
+                        if usa_cartelle:
+                            destinazione = os.path.join(base_dir, denominazione.replace(" ", "_"))
+                            try:
+                                os.makedirs(destinazione, exist_ok=True)
+                                logging.info(f"Cartella creata/verificata: {destinazione}")
+                            except Exception as e:
+                                logging.error(f"Errore nella creazione della cartella {destinazione}: {str(e)}")
+                                raise
+
+                        nuovo_percorso = os.path.join(destinazione, nuovo_nome)
+
+                        # Verifica se il file di destinazione esiste già
+                        if os.path.exists(nuovo_percorso):
+                            logging.warning(f"Il file di destinazione esiste già: {nuovo_percorso}")
+                            # Aggiungi un suffisso al nome file per evitare sovrascritture
+                            base, ext = os.path.splitext(nuovo_nome)
+                            timestamp = datetime.now().strftime("%H%M%S")
+                            nuovo_nome = f"{base}_{timestamp}{ext}"
+                            nuovo_percorso = os.path.join(destinazione, nuovo_nome)
+                            logging.info(f"Nuovo nome con timestamp: {nuovo_nome}")
+
+                        # Rinomina il file
+                        try:
+                            os.rename(file_path, nuovo_percorso)
+                            logging.info(f"File rinominato con successo: {nuovo_percorso}")
+                            success_count += 1
+                        except Exception as e:
+                            logging.error(f"Errore durante la rinomina del file {file_path}: {str(e)}")
+                            error_files.append(os.path.basename(file_path))
+                            fail_count += 1
+                    else:
+                        logging.warning(f"Impossibile estrarre tutte le informazioni dal file: {file_path}")
+                        error_files.append(os.path.basename(file_path))
+                        fail_count += 1
+
+                except Exception as e:
+                    logging.error(f"Errore durante l'elaborazione del file {file_path}: {str(e)}")
+                    logging.debug(traceback.format_exc())
+                    error_files.append(os.path.basename(file_path))
+                    fail_count += 1
+
+            # Aggiorna l'interfaccia con il risultato
+            result_text = f"✅ {success_count} file rinominati correttamente.\n❌ {fail_count} file non elaborati."
+
+            # Se ci sono stati errori, aggiungi dettagli
+            if error_files:
+                error_files_text = "\n\nFile con errori:\n" + "\n".join(error_files[:5])
+                if len(error_files) > 5:
+                    error_files_text += f"\n... e altri {len(error_files) - 5} file"
+                result_text += error_files_text
+
+            self.label_output.setText(result_text)
+            logging.info(f"Elaborazione completata: {success_count} successi, {fail_count} fallimenti")
+
+        except Exception as e:
+            # Gestione degli errori generali
+            logging.error(f"Errore generale durante l'elaborazione dei file: {str(e)}")
+            logging.debug(traceback.format_exc())
+            QMessageBox.critical(self, "Errore", f"Si è verificato un errore durante l'elaborazione:\n\n{str(e)}")
+            self.label_output.setText("❌ Errore durante l'elaborazione. Controlla il file di log per i dettagli.")
