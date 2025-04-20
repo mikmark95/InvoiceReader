@@ -39,12 +39,12 @@ class FatturaRenamer(QWidget):
 
         self.setStyleSheet("""
             QWidget {
-                background-color: #E6EAED;
+                background-color: #9DB4C4;
                 font-family: 'Segoe UI', sans-serif;
                 font-size: 13px;
             }
             QPushButton {
-                background-color: #0078d4;
+                background-color: #61707B;
                 color: white;
                 border-radius: 5px;
                 padding: 6px 12px;
