@@ -34,12 +34,21 @@ class FatturaRenamer(QWidget):
                 border: 1px solid #ccc;
                 border-radius: 4px;
                 padding: 4px;
+                color: black;
+            }
+            QComboBox QAbstractItemView {
+                background-color: white;
+                color: black;
+                selection-background-color: #0078d4;
+                selection-color: white;
             }
             QLabel {
                 font-weight: bold;
+                color: black;
             }
             QCheckBox {
                 margin-top: 5px;
+                color: black;
             }
         """)
 
