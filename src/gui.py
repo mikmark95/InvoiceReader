@@ -39,7 +39,7 @@ class FatturaRenamer(QWidget):
 
         self.setStyleSheet("""
             QWidget {
-                background-color: #f5f7fa;
+                background-color: #E6EAED;
                 font-family: 'Segoe UI', sans-serif;
                 font-size: 13px;
             }
