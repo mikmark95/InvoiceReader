@@ -98,10 +98,7 @@ class FatturaRenamer(QWidget):
         # Checkbox Generico
         self.generico_checkbox = QCheckBox("Generico")
         self.generico_checkbox.stateChanged.connect(self.toggle_tipo_combo)
-        generico_layout = QHBoxLayout()
-        generico_layout.addSpacerItem(QSpacerItem(90, 0, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum))
-        generico_layout.addWidget(self.generico_checkbox)
-        self.layout.addLayout(generico_layout)
+        self.layout.addLayout(crea_riga("", self.generico_checkbox))
 
         self.stagione_combo = QComboBox()
         self.stagione_combo.addItems(["PE", "AI", "CONTINUATIVO"])
@@ -116,7 +113,7 @@ class FatturaRenamer(QWidget):
         self.layout.addLayout(crea_riga("Genere:", self.genere_combo))
 
         self.cartella_checkbox = QCheckBox("Sposta i file in cartelle con nome del fornitore")
-        self.layout.addWidget(self.cartella_checkbox)
+        self.layout.addLayout(crea_riga("", self.cartella_checkbox))
 
         # Pulsanti file management
         self.file_button_layout = QHBoxLayout()
