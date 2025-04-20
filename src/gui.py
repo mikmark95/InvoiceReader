@@ -1,3 +1,11 @@
+"""
+Modulo GUI per l'applicazione InvoiceReader.
+
+Questo modulo implementa l'interfaccia grafica dell'applicazione utilizzando PyQt6.
+Fornisce una finestra con controlli per selezionare file PDF, specificare parametri
+per la rinomina e processare i file.
+"""
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton,
     QLabel, QFileDialog, QLineEdit, QMessageBox,
@@ -9,7 +17,19 @@ from utils import estrai_info_da_pdf, genera_nome_file
 import os
 
 class FatturaRenamer(QWidget):
+    """
+    Classe principale dell'interfaccia grafica per rinominare fatture PDF.
+
+    Questa classe implementa una finestra con controlli per:
+    - Selezionare file PDF
+    - Specificare parametri per la rinomina (tipologia, stagione, anno, genere)
+    - Processare i file per rinominarli in base alle informazioni estratte
+    """
+
     def __init__(self):
+        """
+        Inizializza la finestra principale e configura l'interfaccia utente.
+        """
         super().__init__()
         self.setWindowTitle("Rinomina Fatture PDF - Modalità Batch")
         self.resize(700, 520)
@@ -126,6 +146,12 @@ class FatturaRenamer(QWidget):
         self.setLayout(self.layout)
 
     def apri_file_dialog(self):
+        """
+        Apre un dialogo per selezionare uno o più file PDF.
+
+        I file selezionati vengono aggiunti alla lista dei file da processare,
+        evitando duplicati.
+        """
         files, _ = QFileDialog.getOpenFileNames(self, "Seleziona file PDF", "", "PDF Files (*.pdf)")
         for path in files:
             if path not in self.file_paths:
@@ -133,12 +159,21 @@ class FatturaRenamer(QWidget):
                 self.file_list.addItem(QListWidgetItem(os.path.basename(path)))
 
     def rimuovi_file(self):
+        """
+        Rimuove il file selezionato dalla lista dei file da processare.
+        """
         selected = self.file_list.currentRow()
         if selected >= 0:
             self.file_paths.pop(selected)
             self.file_list.takeItem(selected)
 
     def reset_tutto(self):
+        """
+        Reimposta tutti i campi dell'interfaccia ai valori predefiniti.
+
+        Cancella la lista dei file, svuota i campi di input e reimposta
+        i menu a tendina ai valori iniziali.
+        """
         self.file_paths.clear()
         self.file_list.clear()
         self.anno_input.clear()
@@ -149,6 +184,20 @@ class FatturaRenamer(QWidget):
         self.label_output.setText("")
 
     def processa_file(self):
+        """
+        Elabora tutti i file PDF selezionati per rinominarli.
+
+        Estrae le informazioni da ciascun PDF, genera un nuovo nome file
+        in base ai parametri specificati dall'utente, e rinomina il file.
+        Se l'opzione è selezionata, sposta anche i file in cartelle denominate
+        secondo il fornitore.
+
+        Mostra messaggi di errore se non ci sono file selezionati o se mancano
+        parametri obbligatori.
+
+        Al termine, visualizza un riepilogo dei file elaborati con successo
+        e di quelli non elaborati.
+        """
         if not self.file_paths:
             QMessageBox.warning(self, "Errore", "Nessun file selezionato.")
             return
