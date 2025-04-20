@@ -3,6 +3,19 @@ import fitz  # PyMuPDF
 
 
 def estrai_info_da_pdf(path):
+    """
+    Estrae informazioni rilevanti da un file PDF di fattura.
+
+    Utilizza PyMuPDF per estrarre il testo dal PDF e poi cerca pattern specifici
+    per identificare la denominazione del fornitore, il numero della fattura e la data.
+
+    Args:
+        path (str): Percorso completo al file PDF da analizzare
+
+    Returns:
+        tuple: Una tupla contenente (denominazione, numero_fattura, data_fattura)
+               Se l'estrazione fallisce, ritorna (None, None, None)
+    """
     with fitz.open(path) as pdf:
         testo = ""
         for pagina in pdf:
@@ -21,6 +34,24 @@ def estrai_info_da_pdf(path):
 
 
 def genera_nome_file(tipologia, numero_fattura, data_fattura, denominazione, stagione, anno, genere):
+    """
+    Genera un nome file standardizzato per la fattura in base ai parametri forniti.
+
+    Crea un nome file che include tutte le informazioni rilevanti della fattura
+    e rimuove eventuali caratteri non validi per i nomi file.
+
+    Args:
+        tipologia (str): Tipo di documento (es. "FATT" per fattura, "NC" per nota di credito)
+        numero_fattura (str): Numero identificativo della fattura
+        data_fattura (str): Data della fattura nel formato "GG-MM-AAAA"
+        denominazione (str): Nome del fornitore
+        stagione (str): Stagione di riferimento (es. "PE", "AI", "CONTINUATIVO")
+        anno (str): Anno di riferimento
+        genere (str): Genere di riferimento (es. "UOMO", "DONNA")
+
+    Returns:
+        str: Nome file standardizzato con estensione .pdf
+    """
     nome = f"{tipologia} {numero_fattura} DEL {data_fattura} {denominazione} {stagione} {anno} {genere}.pdf"
     caratteri_non_validi = r'<>:"/\\|?*'
     for c in caratteri_non_validi:
