@@ -3,32 +3,37 @@ import os
 import logging
 import traceback
 import fitz  # PyMuPDF
+from pattern_db import PatternDatabase
 
+# Inizializza il database dei pattern
+pattern_db = PatternDatabase()
 
-def estrai_info_da_pdf(path):
+def estrai_info_da_pdf(path, feedback_mode=False):
     """
     Estrae informazioni rilevanti da un file PDF di fattura.
 
     Utilizza PyMuPDF per estrarre il testo dal PDF e poi cerca pattern specifici
     per identificare la denominazione del fornitore, il numero della fattura e la data.
+    Utilizza un database di pattern che migliora nel tempo.
 
     Args:
         path (str): Percorso completo al file PDF da analizzare
+        feedback_mode (bool): Se True, restituisce anche il testo estratto per feedback
 
     Returns:
-        tuple: Una tupla contenente (denominazione, numero_fattura, data_fattura)
-               Se l'estrazione fallisce, ritorna (None, None, None)
+        tuple: Una tupla contenente (denominazione, numero_fattura, data_fattura, [testo_estratto])
+               Se l'estrazione fallisce, ritorna (None, None, None, [testo_estratto])
     """
     try:
         # Verifica che il file esista
         if not os.path.exists(path):
             logging.error(f"File non trovato: {path}")
-            return None, None, None
+            return (None, None, None) if not feedback_mode else (None, None, None, None)
 
         # Verifica che il file sia un PDF
         if not path.lower().endswith('.pdf'):
             logging.error(f"Il file non è un PDF: {path}")
-            return None, None, None
+            return (None, None, None) if not feedback_mode else (None, None, None, None)
 
         # Estrai il testo dal PDF
         try:
@@ -38,31 +43,51 @@ def estrai_info_da_pdf(path):
                     testo += pagina.get_text()
         except fitz.FileDataError:
             logging.error(f"Errore nel formato del file PDF: {path}")
-            return None, None, None
+            return (None, None, None) if not feedback_mode else (None, None, None, None)
         except Exception as e:
             logging.error(f"Errore durante l'estrazione del testo dal PDF {path}: {str(e)}")
             logging.debug(traceback.format_exc())
-            return None, None, None
+            return (None, None, None) if not feedback_mode else (None, None, None, None)
 
-        # Cerca i pattern nel testo
-        denominazione_match = re.search(r"Denominazione:\s*(.+)", testo)
-        numero_data_match = re.search(r"([A-Z0-9/\-]+)\s+(\d{2}-\d{2}-\d{4})", testo)
+        # Prima prova a identificare il fornitore usando i pattern globali
+        denominazione = None
+        for pattern in pattern_db.get_global_patterns("denominazione"):
+            match = re.search(pattern, testo)
+            if match:
+                denominazione = match.group(1).strip()
+                break
 
-        if denominazione_match and numero_data_match:
-            denominazione = denominazione_match.group(1).strip()
-            numero_fattura = numero_data_match.group(1).strip().replace("/", "-")
-            data_fattura = numero_data_match.group(2).strip()
-            return denominazione, numero_fattura, data_fattura
-        else:
-            logging.warning(f"Non è stato possibile estrarre tutte le informazioni dal PDF: {path}")
-            logging.debug(f"Testo estratto: {testo[:500]}...")  # Log dei primi 500 caratteri
-            return None, None, None
+        # Se abbiamo identificato il fornitore, verifica se abbiamo pattern specifici
+        if denominazione:
+            fornitore_patterns = pattern_db.get_fornitore_patterns(denominazione)
+            if fornitore_patterns and "numero_data" in fornitore_patterns:
+                # Usa il pattern specifico del fornitore
+                match = re.search(fornitore_patterns["numero_data"], testo)
+                if match:
+                    numero_fattura = match.group(1).strip().replace("/", "-")
+                    data_fattura = match.group(2).strip()
+                    logging.info(f"Estrazione riuscita usando pattern specifico per {denominazione}")
+                    return (denominazione, numero_fattura, data_fattura) if not feedback_mode else (denominazione, numero_fattura, data_fattura, testo)
+
+        # Se non abbiamo trovato pattern specifici o non hanno funzionato, usa i pattern globali
+        for pattern in pattern_db.get_global_patterns("numero_data"):
+            match = re.search(pattern, testo)
+            if match:
+                numero_fattura = match.group(1).strip().replace("/", "-")
+                data_fattura = match.group(2).strip()
+                logging.info(f"Estrazione riuscita usando pattern globale")
+                return (denominazione, numero_fattura, data_fattura) if not feedback_mode else (denominazione, numero_fattura, data_fattura, testo)
+
+        # Se siamo arrivati qui, l'estrazione è fallita
+        logging.warning(f"Non è stato possibile estrarre tutte le informazioni dal PDF: {path}")
+        logging.debug(f"Testo estratto: {testo[:500]}...")  # Log dei primi 500 caratteri
+        return (None, None, None) if not feedback_mode else (None, None, None, testo)
 
     except Exception as e:
         # Cattura qualsiasi altra eccezione non prevista
         logging.error(f"Errore imprevisto durante l'elaborazione del PDF {path}: {str(e)}")
         logging.debug(traceback.format_exc())
-        return None, None, None
+        return (None, None, None) if not feedback_mode else (None, None, None, None)
 
 
 def genera_nome_file(tipologia, numero_fattura, data_fattura, denominazione, stagione, anno, genere, generico=False):
