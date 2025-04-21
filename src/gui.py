@@ -8,6 +8,7 @@ per la rinomina e processare i file.
 
 import os
 import logging
+import re
 import traceback
 from datetime import datetime
 from PyQt6.QtWidgets import (
@@ -18,6 +19,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from utils import estrai_info_da_pdf, genera_nome_file
+from pattern_db import PatternDatabase
 
 class FatturaRenamer(QWidget):
     """
@@ -36,6 +38,10 @@ class FatturaRenamer(QWidget):
         super().__init__()
         self.setWindowTitle("Rinomina Fatture PDF - Modalità Batch")
         self.resize(700, 520)
+
+        # Inizializza il database dei pattern
+        self.pattern_db = PatternDatabase()
+        self.current_extraction_text = None  # Per memorizzare il testo estratto dall'ultimo PDF
 
         self.setStyleSheet("""
             QWidget {
@@ -115,6 +121,12 @@ class FatturaRenamer(QWidget):
         self.cartella_checkbox = QCheckBox("Sposta i file in cartelle con nome del fornitore")
         self.layout.addLayout(crea_riga("", self.cartella_checkbox))
 
+        # Checkbox per l'apprendimento automatico
+        self.ml_checkbox = QCheckBox("Abilita apprendimento automatico")
+        self.ml_checkbox.setChecked(False)  # Non abilitato di default
+        self.ml_checkbox.setToolTip("Quando abilitato, il sistema impara dai documenti elaborati creando nuovi pattern di estrazione per migliorare il riconoscimento futuro")
+        self.layout.addLayout(crea_riga("", self.ml_checkbox))
+
         # Pulsanti file management
         self.file_button_layout = QHBoxLayout()
 
@@ -130,9 +142,14 @@ class FatturaRenamer(QWidget):
         self.button_reset.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.button_reset.clicked.connect(self.reset_tutto)
 
+        self.button_patterns = QPushButton("🔍 Gestisci Pattern")
+        self.button_patterns.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.button_patterns.clicked.connect(self.apri_gestore_pattern)
+
         self.file_button_layout.addWidget(self.button_select)
         self.file_button_layout.addWidget(self.button_remove)
         self.file_button_layout.addWidget(self.button_reset)
+        self.file_button_layout.addWidget(self.button_patterns)
         self.layout.addLayout(self.file_button_layout)
 
         # Lista file
@@ -230,7 +247,232 @@ class FatturaRenamer(QWidget):
 
         self.generico_checkbox.setChecked(False)
         self.cartella_checkbox.setChecked(False)
+        self.ml_checkbox.setChecked(False)  # Ripristina l'apprendimento automatico a disabilitato
         self.label_output.setText("")
+
+    def mostra_dialog_feedback(self, file_path, denominazione, numero_fattura, data_fattura, testo_estratto):
+        """
+        Mostra un dialog per confermare o correggere l'estrazione e migliorare i pattern.
+
+        Args:
+            file_path (str): Percorso del file PDF
+            denominazione (str): Denominazione estratta
+            numero_fattura (str): Numero fattura estratto
+            data_fattura (str): Data fattura estratta
+            testo_estratto (str): Testo completo estratto dal PDF
+
+        Returns:
+            tuple: Denominazione, numero fattura e data fattura confermati o corretti
+        """
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Conferma Estrazione")
+        dialog.resize(600, 500)
+
+        layout = QVBoxLayout()
+
+        # Informazioni estratte
+        layout.addWidget(QLabel("<b>Informazioni estratte:</b>"))
+
+        # Denominazione
+        denom_layout = QHBoxLayout()
+        denom_layout.addWidget(QLabel("Denominazione:"))
+        denom_input = QLineEdit(denominazione if denominazione else "")
+        denom_layout.addWidget(denom_input)
+        layout.addLayout(denom_layout)
+
+        # Numero fattura
+        num_layout = QHBoxLayout()
+        num_layout.addWidget(QLabel("Numero fattura:"))
+        num_input = QLineEdit(numero_fattura if numero_fattura else "")
+        num_layout.addWidget(num_input)
+        layout.addLayout(num_layout)
+
+        # Data fattura
+        data_layout = QHBoxLayout()
+        data_layout.addWidget(QLabel("Data fattura:"))
+        data_input = QLineEdit(data_fattura if data_fattura else "")
+        data_layout.addWidget(data_input)
+        layout.addLayout(data_layout)
+
+        # Testo estratto
+        layout.addWidget(QLabel("<b>Testo estratto dal PDF:</b>"))
+        text_view = QTextEdit()
+        text_view.setPlainText(testo_estratto if testo_estratto else "Nessun testo estratto")
+        text_view.setReadOnly(True)
+        layout.addWidget(text_view)
+
+        # Pulsanti
+        buttons_layout = QHBoxLayout()
+
+        btn_cancel = QPushButton("Annulla")
+        btn_cancel.clicked.connect(dialog.reject)
+
+        # Cambia il testo del pulsante in base allo stato dell'apprendimento automatico
+        btn_text = "Conferma e Migliora" if self.ml_checkbox.isChecked() else "Conferma"
+        btn_confirm = QPushButton(btn_text)
+        btn_confirm.clicked.connect(dialog.accept)
+
+        buttons_layout.addWidget(btn_cancel)
+        buttons_layout.addWidget(btn_confirm)
+        layout.addLayout(buttons_layout)
+
+        dialog.setLayout(layout)
+
+        # Esegui il dialog
+        if dialog.exec():
+            # L'utente ha confermato, salva le correzioni
+            new_denom = denom_input.text().strip()
+            new_num = num_input.text().strip()
+            new_data = data_input.text().strip()
+
+            # Se i valori sono stati corretti e l'apprendimento automatico è abilitato, crea nuovi pattern
+            if self.ml_checkbox.isChecked():
+                if new_denom and new_denom != denominazione:
+                    # Crea un nuovo pattern per la denominazione
+                    pattern = self.crea_pattern_da_testo(testo_estratto, new_denom, "denominazione")
+                    if pattern:
+                        self.pattern_db.add_global_pattern("denominazione", pattern)
+
+                if new_denom and new_num and new_data:
+                    # Crea un pattern specifico per questo fornitore
+                    pattern = self.crea_pattern_da_testo(testo_estratto, f"{new_num}\\s+{new_data}", "numero_data")
+                    if pattern:
+                        self.pattern_db.add_fornitore_pattern(new_denom, {
+                            "numero_data": pattern
+                        })
+
+            return new_denom, new_num, new_data
+
+        return denominazione, numero_fattura, data_fattura
+
+    def crea_pattern_da_testo(self, testo, valore, tipo):
+        """
+        Crea un pattern regex basato sul testo e sul valore estratto.
+
+        Args:
+            testo (str): Testo completo
+            valore (str): Valore da cercare nel testo
+            tipo (str): Tipo di pattern (denominazione, numero_data)
+
+        Returns:
+            str: Pattern regex creato o None se non è possibile crearlo
+        """
+        try:
+            # Escape dei caratteri speciali nel valore
+            escaped_value = re.escape(valore)
+
+            if tipo == "denominazione":
+                # Cerca il valore nel testo e crea un pattern con il contesto
+                index = testo.find(valore)
+                if index >= 0:
+                    # Prendi fino a 20 caratteri prima del valore
+                    prefix = testo[max(0, index-20):index]
+                    # Trova l'ultimo separatore nel prefisso (spazio, newline, :)
+                    separators = [prefix.rfind(" "), prefix.rfind("\n"), prefix.rfind(":")]
+                    sep_index = max(separators)
+                    if sep_index >= 0:
+                        prefix = prefix[sep_index:]
+
+                    # Crea il pattern
+                    return f"{re.escape(prefix)}(.+)"
+
+            elif tipo == "numero_data":
+                # Per numero e data, crea un pattern che cattura entrambi
+                parts = escaped_value.split("\\s+")
+                if len(parts) == 2:
+                    return f"({parts[0]})\\s+({parts[1]})"
+
+            return None
+        except Exception as e:
+            logging.error(f"Errore nella creazione del pattern: {str(e)}")
+            return None
+
+    def apri_gestore_pattern(self):
+        """
+        Apre una finestra per gestire i pattern di estrazione salvati.
+        """
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QTabWidget, QTableWidget, QTableWidgetItem, QPushButton, QHBoxLayout
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Gestione Pattern di Estrazione")
+        dialog.resize(800, 600)
+        layout = QVBoxLayout()
+
+        # Crea un widget con schede
+        tab_widget = QTabWidget()
+
+        # Scheda per i pattern globali
+        global_tab = QWidget()
+        global_layout = QVBoxLayout()
+
+        # Tabella per i pattern di denominazione
+        global_layout.addWidget(QLabel("<b>Pattern per Denominazione:</b>"))
+        denom_table = QTableWidget(0, 2)
+        denom_table.setHorizontalHeaderLabels(["ID", "Pattern Regex"])
+        denom_table.horizontalHeader().setStretchLastSection(True)
+
+        # Popola la tabella
+        denom_patterns = self.pattern_db.get_global_patterns("denominazione")
+        denom_table.setRowCount(len(denom_patterns))
+        for i, pattern in enumerate(denom_patterns):
+            denom_table.setItem(i, 0, QTableWidgetItem(str(i+1)))
+            denom_table.setItem(i, 1, QTableWidgetItem(pattern))
+
+        global_layout.addWidget(denom_table)
+
+        # Tabella per i pattern di numero/data
+        global_layout.addWidget(QLabel("<b>Pattern per Numero/Data:</b>"))
+        numdata_table = QTableWidget(0, 2)
+        numdata_table.setHorizontalHeaderLabels(["ID", "Pattern Regex"])
+        numdata_table.horizontalHeader().setStretchLastSection(True)
+
+        # Popola la tabella
+        numdata_patterns = self.pattern_db.get_global_patterns("numero_data")
+        numdata_table.setRowCount(len(numdata_patterns))
+        for i, pattern in enumerate(numdata_patterns):
+            numdata_table.setItem(i, 0, QTableWidgetItem(str(i+1)))
+            numdata_table.setItem(i, 1, QTableWidgetItem(pattern))
+
+        global_layout.addWidget(numdata_table)
+
+        global_tab.setLayout(global_layout)
+        tab_widget.addTab(global_tab, "Pattern Globali")
+
+        # Scheda per i pattern specifici dei fornitori
+        fornitori_tab = QWidget()
+        fornitori_layout = QVBoxLayout()
+
+        fornitori_table = QTableWidget(0, 3)
+        fornitori_table.setHorizontalHeaderLabels(["Fornitore", "Tipo Pattern", "Pattern Regex"])
+        fornitori_table.horizontalHeader().setStretchLastSection(True)
+
+        # Popola la tabella
+        row = 0
+        for fornitore, patterns in self.pattern_db.patterns["fornitori"].items():
+            for tipo, pattern in patterns.items():
+                fornitori_table.insertRow(row)
+                fornitori_table.setItem(row, 0, QTableWidgetItem(fornitore))
+                fornitori_table.setItem(row, 1, QTableWidgetItem(tipo))
+                fornitori_table.setItem(row, 2, QTableWidgetItem(pattern))
+                row += 1
+
+        fornitori_layout.addWidget(fornitori_table)
+        fornitori_tab.setLayout(fornitori_layout)
+        tab_widget.addTab(fornitori_tab, "Pattern Fornitori")
+
+        layout.addWidget(tab_widget)
+
+        # Pulsanti
+        buttons_layout = QHBoxLayout()
+        btn_close = QPushButton("Chiudi")
+        btn_close.clicked.connect(dialog.accept)
+        buttons_layout.addWidget(btn_close)
+        layout.addLayout(buttons_layout)
+
+        dialog.setLayout(layout)
+        dialog.exec()
 
     def processa_file(self):
         """
@@ -278,12 +520,18 @@ class FatturaRenamer(QWidget):
                 try:
                     logging.info(f"Elaborazione file: {file_path}")
 
-                    # Estrai informazioni dal PDF
-                    denominazione, numero_fattura, data_fattura = estrai_info_da_pdf(file_path)
+                    # Estrai informazioni dal PDF con feedback mode
+                    denominazione, numero_fattura, data_fattura, testo_estratto = estrai_info_da_pdf(file_path, feedback_mode=True)
 
                     if all([denominazione, numero_fattura, data_fattura]):
                         logging.info(f"Informazioni estratte: denominazione={denominazione}, "
                                     f"numero_fattura={numero_fattura}, data_fattura={data_fattura}")
+
+                        # Chiedi conferma e migliora i pattern solo se l'apprendimento automatico è abilitato
+                        if self.ml_checkbox.isChecked():
+                            denominazione, numero_fattura, data_fattura = self.mostra_dialog_feedback(
+                                file_path, denominazione, numero_fattura, data_fattura, testo_estratto
+                            )
 
                         # Genera il nuovo nome file
                         nuovo_nome = genera_nome_file(
@@ -326,9 +574,69 @@ class FatturaRenamer(QWidget):
                             error_files.append(os.path.basename(file_path))
                             fail_count += 1
                     else:
-                        logging.warning(f"Impossibile estrarre tutte le informazioni dal file: {file_path}")
-                        error_files.append(os.path.basename(file_path))
-                        fail_count += 1
+                        # Se l'estrazione è fallita ma abbiamo il testo, chiedi all'utente di inserire manualmente
+                        if testo_estratto:
+                            logging.info(f"Estrazione fallita ma testo disponibile")
+                            # Mostra il dialog solo se l'apprendimento automatico è abilitato
+                            if self.ml_checkbox.isChecked():
+                                logging.info(f"Richiedo input manuale per miglioramento")
+                                denominazione, numero_fattura, data_fattura = self.mostra_dialog_feedback(
+                                    file_path, None, None, None, testo_estratto
+                                )
+                            else:
+                                # Se l'apprendimento automatico è disabilitato, non mostrare il dialog
+                                denominazione, numero_fattura, data_fattura = None, None, None
+
+                            # Se l'utente ha inserito i dati manualmente, procedi con la rinomina
+                            if all([denominazione, numero_fattura, data_fattura]):
+                                # Genera il nuovo nome file
+                                nuovo_nome = genera_nome_file(
+                                    tipologia, numero_fattura, data_fattura, denominazione, stagione, anno, genere, generico
+                                )
+                                logging.info(f"Nuovo nome generato manualmente: {nuovo_nome}")
+
+                                base_dir = os.path.dirname(file_path)
+                                destinazione = base_dir
+
+                                # Gestione delle cartelle
+                                if usa_cartelle:
+                                    destinazione = os.path.join(base_dir, denominazione.replace(" ", "_"))
+                                    try:
+                                        os.makedirs(destinazione, exist_ok=True)
+                                        logging.info(f"Cartella creata/verificata: {destinazione}")
+                                    except Exception as e:
+                                        logging.error(f"Errore nella creazione della cartella {destinazione}: {str(e)}")
+                                        raise
+
+                                nuovo_percorso = os.path.join(destinazione, nuovo_nome)
+
+                                # Verifica se il file di destinazione esiste già
+                                if os.path.exists(nuovo_percorso):
+                                    logging.warning(f"Il file di destinazione esiste già: {nuovo_percorso}")
+                                    # Aggiungi un suffisso al nome file per evitare sovrascritture
+                                    base, ext = os.path.splitext(nuovo_nome)
+                                    timestamp = datetime.now().strftime("%H%M%S")
+                                    nuovo_nome = f"{base}_{timestamp}{ext}"
+                                    nuovo_percorso = os.path.join(destinazione, nuovo_nome)
+                                    logging.info(f"Nuovo nome con timestamp: {nuovo_nome}")
+
+                                # Rinomina il file
+                                try:
+                                    os.rename(file_path, nuovo_percorso)
+                                    logging.info(f"File rinominato con successo: {nuovo_percorso}")
+                                    success_count += 1
+                                except Exception as e:
+                                    logging.error(f"Errore durante la rinomina del file {file_path}: {str(e)}")
+                                    error_files.append(os.path.basename(file_path))
+                                    fail_count += 1
+                            else:
+                                logging.warning(f"L'utente non ha fornito dati sufficienti per la rinomina")
+                                error_files.append(os.path.basename(file_path))
+                                fail_count += 1
+                        else:
+                            logging.warning(f"Impossibile estrarre tutte le informazioni dal file: {file_path}")
+                            error_files.append(os.path.basename(file_path))
+                            fail_count += 1
 
                 except Exception as e:
                     logging.error(f"Errore durante l'elaborazione del file {file_path}: {str(e)}")
