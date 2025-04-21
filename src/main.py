@@ -25,6 +25,10 @@ def setup_logging():
     log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'logs')
     os.makedirs(log_dir, exist_ok=True)
 
+    # Crea anche la directory data se non esiste
+    data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data')
+    os.makedirs(data_dir, exist_ok=True)
+
     # Crea un nome file con timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = os.path.join(log_dir, f"error_log_{timestamp}.log")
