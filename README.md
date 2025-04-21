@@ -10,6 +10,7 @@ InvoiceReader è un'applicazione desktop con interfaccia grafica che permette di
 - Personalizzazione del nome file con parametri aggiuntivi (tipologia, stagione, anno, genere)
 - Modalità "Generico" per un formato di nome file semplificato
 - Opzione per spostare i file in cartelle denominate secondo il fornitore
+- Apprendimento automatico opzionale per migliorare il riconoscimento dei documenti nel tempo
 - Interfaccia grafica intuitiva realizzata con PyQt6
 - Sistema di logging dettagliato per la diagnostica degli errori
 
@@ -44,8 +45,9 @@ python src/main.py
      - Genere: UOMO o DONNA
    - **Modalità Generico**: Seleziona la checkbox "Generico" per utilizzare un formato di nome file semplificato che include solo il nome del fornitore, il numero fattura e la data
 4. Opzionalmente, seleziona l'opzione "Sposta i file in cartelle con nome del fornitore" per organizzare i file in cartelle
-5. Clicca su "🚀 Avvia Rinomina" per processare i file
-6. Al termine dell'elaborazione, verrà mostrato un riepilogo dei file elaborati con successo e di quelli non elaborati
+5. Opzionalmente, seleziona "Abilita apprendimento automatico" per permettere al sistema di imparare dai documenti elaborati e migliorare il riconoscimento futuro (disabilitato di default)
+6. Clicca su "🚀 Avvia Rinomina" per processare i file
+7. Al termine dell'elaborazione, verrà mostrato un riepilogo dei file elaborati con successo e di quelli non elaborati
 
 ## Struttura del Progetto
 
@@ -101,6 +103,14 @@ Se l'applicazione non riesce a estrarre correttamente le informazioni dai PDF:
 1. Verifica che il PDF contenga testo ricercabile e non sia solo un'immagine scansionata
 2. Controlla che il formato del documento segua lo standard atteso dall'applicazione
 3. Consulta i file di log nella cartella `logs` per dettagli specifici sull'errore
+
+## Novità e Aggiornamenti
+
+### Versione 1.1.0 (Aprile 2025)
+- Aggiunta funzionalità di apprendimento automatico opzionale
+- L'apprendimento automatico è disabilitato di default e può essere attivato tramite checkbox
+- Migliorata la gestione dei pattern di estrazione
+- Risolti bug nell'interfaccia del gestore pattern
 
 ## Autori
 
