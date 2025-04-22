@@ -11,6 +11,7 @@ InvoiceReader è un'applicazione desktop con interfaccia grafica che permette di
 - Modalità "Generico" per un formato di nome file semplificato
 - Opzione per spostare i file in cartelle denominate secondo il fornitore
 - Apprendimento automatico opzionale per migliorare il riconoscimento dei documenti nel tempo
+- Anteprima PDF con navigazione tra le pagine e controlli di zoom
 - Interfaccia grafica intuitiva realizzata con PyQt6
 - Sistema di logging dettagliato per la diagnostica degli errori
 
@@ -37,17 +38,21 @@ python src/main.py
 ```
 
 2. Utilizza il pulsante "📂 Scegli PDF" per selezionare uno o più file PDF di fatture
-3. Scegli la modalità di rinomina:
+3. Selezionando un file dalla lista, verrà mostrata un'anteprima del PDF:
+   - Se il PDF ha più pagine, appariranno i controlli di navigazione che permettono di spostarsi tra le pagine
+   - Utilizza i pulsanti "◀️ Pagina precedente" e "Pagina successiva ▶️" per navigare tra le pagine
+   - Puoi anche utilizzare i controlli di zoom (🔍+, 🔍-, Reset Zoom) per ingrandire o ridurre l'anteprima
+4. Scegli la modalità di rinomina:
    - **Modalità Standard**: Compila tutti i campi richiesti:
      - Tipologia: Fattura o Nota di credito
      - Stagione: PE (Primavera/Estate), AI (Autunno/Inverno) o CONTINUATIVO
      - Anno: Anno di riferimento (es. 2025)
      - Genere: UOMO o DONNA
    - **Modalità Generico**: Seleziona la checkbox "Generico" per utilizzare un formato di nome file semplificato che include solo il nome del fornitore, il numero fattura e la data
-4. Opzionalmente, seleziona l'opzione "Sposta i file in cartelle con nome del fornitore" per organizzare i file in cartelle
-5. Opzionalmente, seleziona "Abilita apprendimento automatico" per permettere al sistema di imparare dai documenti elaborati e migliorare il riconoscimento futuro (disabilitato di default)
-6. Clicca su "🚀 Avvia Rinomina" per processare i file
-7. Al termine dell'elaborazione, verrà mostrato un riepilogo dei file elaborati con successo e di quelli non elaborati
+5. Opzionalmente, seleziona l'opzione "Sposta i file in cartelle con nome del fornitore" per organizzare i file in cartelle
+6. Opzionalmente, seleziona "Abilita apprendimento automatico" per permettere al sistema di imparare dai documenti elaborati e migliorare il riconoscimento futuro (disabilitato di default)
+7. Clicca su "🚀 Avvia Rinomina" per processare i file
+8. Al termine dell'elaborazione, verrà mostrato un riepilogo dei file elaborati con successo e di quelli non elaborati
 
 ## Struttura del Progetto
 
@@ -105,6 +110,11 @@ Se l'applicazione non riesce a estrarre correttamente le informazioni dai PDF:
 3. Consulta i file di log nella cartella `logs` per dettagli specifici sull'errore
 
 ## Novità e Aggiornamenti
+
+### Versione 1.2.0 (Maggio 2025)
+- Aggiunta funzionalità di navigazione tra le pagine dei PDF nell'anteprima
+- Implementati controlli di navigazione che appaiono solo quando il PDF ha più pagine
+- Migliorata l'esperienza utente con l'anteprima PDF
 
 ### Versione 1.1.0 (Aprile 2025)
 - Aggiunta funzionalità di apprendimento automatico opzionale
