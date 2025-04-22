@@ -15,13 +15,185 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton,
     QLabel, QFileDialog, QLineEdit, QMessageBox,
     QComboBox, QHBoxLayout, QListWidget, QListWidgetItem, QCheckBox, QSizePolicy, QSpacerItem,
-    QGraphicsView, QGraphicsScene, QFrame, QMenuBar, QMenu, QMainWindow
+    QGraphicsView, QGraphicsScene, QFrame, QMenuBar, QMenu, QMainWindow, QDialog, QTextBrowser,
+    QScrollArea
 )
-from PyQt6.QtCore import Qt, QRectF, QUrl
-from PyQt6.QtGui import QFont, QImage, QPixmap, QDesktopServices
+from PyQt6.QtCore import Qt, QRectF, QUrl, QSize
+from PyQt6.QtGui import QFont, QImage, QPixmap, QDesktopServices, QTextCursor
 import fitz  # PyMuPDF
 from utils import estrai_info_da_pdf, genera_nome_file
 from pattern_db import PatternDatabase
+
+class ReadmeViewer(QDialog):
+    """
+    Finestra di dialogo per visualizzare il contenuto del file README.md in modo scrollabile.
+    """
+
+    def __init__(self, parent=None, readme_path=None):
+        """
+        Inizializza la finestra di visualizzazione del README.
+
+        Args:
+            parent: Widget genitore
+            readme_path: Percorso del file README.md
+        """
+        super().__init__(parent)
+        self.setWindowTitle("Guida - InvoiceReader")
+        self.resize(800, 600)  # Dimensione iniziale della finestra
+
+        # Layout principale
+        layout = QVBoxLayout(self)
+
+        # Widget per visualizzare il testo con scrolling
+        self.text_browser = QTextBrowser()
+        self.text_browser.setOpenExternalLinks(True)  # Permette di aprire link esterni
+        self.text_browser.setStyleSheet("""
+            QTextBrowser {
+                background-color: white;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                padding: 10px;
+                font-family: 'Segoe UI', sans-serif;
+                font-size: 14px;
+                color: black;
+            }
+        """)
+
+        # Aggiungi il browser al layout
+        layout.addWidget(self.text_browser)
+
+        # Pulsante di chiusura
+        close_button = QPushButton("Chiudi")
+        close_button.clicked.connect(self.accept)
+        close_button.setStyleSheet("""
+            QPushButton {
+                background-color: #61707B;
+                color: white;
+                border-radius: 5px;
+                padding: 6px 12px;
+            }
+            QPushButton:hover {
+                background-color: #005fa1;
+            }
+        """)
+
+        # Aggiungi il pulsante al layout
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        button_layout.addWidget(close_button)
+        layout.addLayout(button_layout)
+
+        # Carica il contenuto del README se il percorso è fornito
+        if readme_path and os.path.exists(readme_path):
+            self.load_readme(readme_path)
+
+    def load_readme(self, readme_path):
+        """
+        Carica il contenuto del file README.md e lo visualizza nel browser.
+
+        Args:
+            readme_path: Percorso del file README.md
+        """
+        try:
+            with open(readme_path, 'r', encoding='utf-8') as file:
+                content = file.read()
+
+                # Formatta il testo per una migliore visualizzazione
+                # Converte il Markdown in HTML semplice per una migliore visualizzazione
+                html_content = self.markdown_to_html(content)
+
+                # Imposta il testo HTML nel browser
+                self.text_browser.setHtml(html_content)
+
+                # Torna all'inizio del documento
+                self.text_browser.moveCursor(QTextCursor.MoveOperation.Start)
+        except Exception as e:
+            self.text_browser.setPlainText(f"Errore durante il caricamento del file README:\n\n{str(e)}")
+
+    def markdown_to_html(self, markdown_text):
+        """
+        Converte il testo Markdown in HTML semplice.
+
+        Args:
+            markdown_text: Testo in formato Markdown
+
+        Returns:
+            str: Testo convertito in HTML
+        """
+        html = []
+        html.append("<html><body style='font-family: Segoe UI, sans-serif; margin: 20px;'>")
+
+        # Suddivide il testo in righe
+        lines = markdown_text.split('\n')
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+
+            # Titoli
+            if line.startswith('# '):
+                html.append(f"<h1>{line[2:]}</h1>")
+            elif line.startswith('## '):
+                html.append(f"<h2>{line[3:]}</h2>")
+            elif line.startswith('### '):
+                html.append(f"<h3>{line[4:]}</h3>")
+            elif line.startswith('#### '):
+                html.append(f"<h4>{line[5:]}</h4>")
+            elif line.startswith('##### '):
+                html.append(f"<h5>{line[6:]}</h5>")
+            elif line.startswith('###### '):
+                html.append(f"<h6>{line[7:]}</h6>")
+
+            # Liste non ordinate
+            elif line.strip().startswith('- '):
+                html.append("<ul>")
+                while i < len(lines) and lines[i].strip().startswith('- '):
+                    html.append(f"<li>{lines[i].strip()[2:]}</li>")
+                    i += 1
+                html.append("</ul>")
+                continue  # Salta l'incremento di i alla fine del ciclo
+
+            # Liste ordinate
+            elif line.strip() and line.strip()[0].isdigit() and line.strip()[1:].startswith('. '):
+                html.append("<ol>")
+                while i < len(lines) and lines[i].strip() and lines[i].strip()[0].isdigit() and lines[i].strip()[1:].startswith('. '):
+                    html.append(f"<li>{lines[i].strip().split('. ', 1)[1]}</li>")
+                    i += 1
+                html.append("</ol>")
+                continue  # Salta l'incremento di i alla fine del ciclo
+
+            # Blocchi di codice
+            elif line.strip() == '```' or line.strip().startswith('```'):
+                html.append("<pre><code>")
+                i += 1  # Salta la riga di apertura
+                while i < len(lines) and not lines[i].strip() == '```':
+                    # Escape dei caratteri HTML
+                    code_line = lines[i].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                    html.append(code_line)
+                    i += 1
+                html.append("</code></pre>")
+
+            # Paragrafi
+            elif line.strip():
+                # Formatta il testo con grassetto e corsivo
+                formatted_line = line
+                # Grassetto: **testo** o __testo__
+                formatted_line = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', formatted_line)
+                formatted_line = re.sub(r'__(.*?)__', r'<b>\1</b>', formatted_line)
+                # Corsivo: *testo* o _testo_
+                formatted_line = re.sub(r'\*(.*?)\*', r'<i>\1</i>', formatted_line)
+                formatted_line = re.sub(r'_(.*?)_', r'<i>\1</i>', formatted_line)
+
+                html.append(f"<p>{formatted_line}</p>")
+
+            # Linea vuota
+            else:
+                html.append("<br>")
+
+            i += 1
+
+        html.append("</body></html>")
+        return '\n'.join(html)
+
 
 class FatturaRenamer(QMainWindow):
     """
@@ -91,14 +263,13 @@ class FatturaRenamer(QMainWindow):
 
     def open_readme(self):
         """
-        Apre il file README.md nel browser predefinito.
+        Apre il file README.md in una finestra scrollabile di PyQt6.
         """
         readme_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "README.md")
         if os.path.exists(readme_path):
-            # Usa un URL con schema 'https' per forzare l'apertura nel browser predefinito
-            url = QUrl.fromLocalFile(readme_path)
-            url.setScheme("https")
-            QDesktopServices.openUrl(url)
+            # Crea e mostra la finestra di visualizzazione del README
+            readme_viewer = ReadmeViewer(self, readme_path)
+            readme_viewer.exec()
         else:
             QMessageBox.warning(self, "File non trovato", "Il file README.md non è stato trovato.")
 
