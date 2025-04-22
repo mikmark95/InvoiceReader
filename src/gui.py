@@ -46,6 +46,8 @@ class FatturaRenamer(QWidget):
         self.current_extraction_text = None  # Per memorizzare il testo estratto dall'ultimo PDF
         self.current_pdf_path = None  # Per memorizzare il percorso del PDF attualmente selezionato
         self.zoom_factor = 1.0  # Fattore di zoom iniziale
+        self.current_page = 0  # Pagina corrente del PDF
+        self.total_pages = 0  # Numero totale di pagine nel PDF
 
         self.setStyleSheet("""
             QWidget {
@@ -202,6 +204,27 @@ class FatturaRenamer(QWidget):
         self.pdf_view.setMinimumWidth(400)
         self.pdf_preview_container.addWidget(self.pdf_view)
 
+        # Aggiungi controlli di navigazione pagine
+        page_nav_layout = QHBoxLayout()
+        self.prev_page_button = QPushButton("◀️ Pagina precedente")
+        self.next_page_button = QPushButton("Pagina successiva ▶️")
+        self.page_label = QLabel("Pagina 1 di 1")
+        self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.prev_page_button.clicked.connect(self.prev_page)
+        self.next_page_button.clicked.connect(self.next_page)
+
+        page_nav_layout.addWidget(self.prev_page_button)
+        page_nav_layout.addWidget(self.page_label)
+        page_nav_layout.addWidget(self.next_page_button)
+
+        # Nascondi i controlli di navigazione inizialmente
+        self.prev_page_button.setVisible(False)
+        self.next_page_button.setVisible(False)
+        self.page_label.setVisible(False)
+
+        self.pdf_preview_container.addLayout(page_nav_layout)
+
         # Aggiungi controlli di zoom
         zoom_layout = QHBoxLayout()
         self.zoom_in_button = QPushButton("🔍+")
@@ -253,6 +276,16 @@ class FatturaRenamer(QWidget):
             if len(self.file_paths) == 0:
                 self.pdf_preview_widget.setVisible(False)
                 self.preview_title.setText("Anteprima PDF")
+                self.current_pdf_path = None
+
+                # Resetta le variabili di navigazione pagine
+                self.current_page = 0
+                self.total_pages = 0
+
+                # Nascondi i controlli di navigazione
+                self.prev_page_button.setVisible(False)
+                self.next_page_button.setVisible(False)
+                self.page_label.setVisible(False)
 
     def toggle_tipo_combo(self, state):
         """
@@ -316,6 +349,15 @@ class FatturaRenamer(QWidget):
         self.pdf_preview_widget.setVisible(False)
         self.preview_title.setText("Anteprima PDF")
         self.current_pdf_path = None
+
+        # Resetta le variabili di navigazione pagine
+        self.current_page = 0
+        self.total_pages = 0
+
+        # Nascondi i controlli di navigazione
+        self.prev_page_button.setVisible(False)
+        self.next_page_button.setVisible(False)
+        self.page_label.setVisible(False)
 
     def resizeEvent(self, event):
         """
@@ -405,6 +447,11 @@ class FatturaRenamer(QWidget):
             self.pdf_preview_widget.setVisible(False)
             self.preview_title.setText("Anteprima PDF")
             self.current_pdf_path = None
+            self.current_page = 0
+            self.total_pages = 0
+            self.prev_page_button.setVisible(False)
+            self.next_page_button.setVisible(False)
+            self.page_label.setVisible(False)
             return
 
         # Ottieni il percorso del file selezionato
@@ -414,28 +461,21 @@ class FatturaRenamer(QWidget):
         # Resetta il fattore di zoom quando si cambia documento
         self.zoom_factor = 1.0
 
+        # Resetta la pagina corrente
+        self.current_page = 0
+
         try:
             # Apri il PDF con PyMuPDF
             doc = fitz.open(file_path)
 
-            # Prendi la prima pagina per l'anteprima
-            page = doc[0]
+            # Salva il numero totale di pagine
+            self.total_pages = len(doc)
 
-            # Renderizza la pagina come immagine
-            pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))  # Scala 1.5 per una migliore qualità
+            # Aggiorna i controlli di navigazione
+            self.aggiorna_controlli_navigazione()
 
-            # Converti l'immagine in QImage
-            img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
-
-            # Crea un QPixmap dall'immagine
-            pixmap = QPixmap.fromImage(img)
-
-            # Aggiungi l'immagine alla scena
-            self.pdf_scene.addPixmap(pixmap)
-
-            # Adatta la vista alla scena
-            self.pdf_view.setScene(self.pdf_scene)
-            self.pdf_view.fitInView(QRectF(0, 0, pixmap.width(), pixmap.height()), Qt.AspectRatioMode.KeepAspectRatio)
+            # Mostra la pagina corrente
+            self.mostra_pagina_corrente(doc)
 
             # Mostra l'anteprima
             self.pdf_preview_widget.setVisible(True)
@@ -452,6 +492,90 @@ class FatturaRenamer(QWidget):
             self.preview_title.setText(f"Errore nell'anteprima: {str(e)}")
             logging.error(f"Errore durante la generazione dell'anteprima PDF: {str(e)}")
             logging.debug(traceback.format_exc())
+
+    def mostra_pagina_corrente(self, doc=None):
+        """
+        Mostra la pagina corrente del PDF nell'anteprima.
+
+        Args:
+            doc (fitz.Document, optional): Documento PDF già aperto. Se None, apre il documento corrente.
+        """
+        if not self.current_pdf_path:
+            return
+
+        close_doc = False
+        try:
+            if doc is None:
+                doc = fitz.open(self.current_pdf_path)
+                close_doc = True
+
+            if self.current_page < 0:
+                self.current_page = 0
+            elif self.current_page >= self.total_pages:
+                self.current_page = self.total_pages - 1
+
+            # Prendi la pagina corrente
+            page = doc[self.current_page]
+
+            # Renderizza la pagina come immagine
+            pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))  # Scala 1.5 per una migliore qualità
+
+            # Converti l'immagine in QImage
+            img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
+
+            # Crea un QPixmap dall'immagine
+            pixmap = QPixmap.fromImage(img)
+
+            # Pulisci la scena e aggiungi l'immagine
+            self.pdf_scene.clear()
+            self.pdf_scene.addPixmap(pixmap)
+
+            # Adatta la vista alla scena
+            self.pdf_view.setScene(self.pdf_scene)
+            self.pdf_view.fitInView(QRectF(0, 0, pixmap.width(), pixmap.height()), Qt.AspectRatioMode.KeepAspectRatio)
+
+            # Aggiorna l'etichetta della pagina
+            self.page_label.setText(f"Pagina {self.current_page + 1} di {self.total_pages}")
+
+        except Exception as e:
+            logging.error(f"Errore durante la visualizzazione della pagina {self.current_page}: {str(e)}")
+            logging.debug(traceback.format_exc())
+        finally:
+            if close_doc and doc:
+                doc.close()
+
+    def aggiorna_controlli_navigazione(self):
+        """
+        Aggiorna la visibilità e lo stato dei controlli di navigazione in base al numero di pagine.
+        """
+        # Mostra i controlli di navigazione solo se ci sono più pagine
+        has_multiple_pages = self.total_pages > 1
+
+        self.prev_page_button.setVisible(has_multiple_pages)
+        self.next_page_button.setVisible(has_multiple_pages)
+        self.page_label.setVisible(has_multiple_pages)
+
+        # Aggiorna lo stato dei pulsanti
+        self.prev_page_button.setEnabled(self.current_page > 0)
+        self.next_page_button.setEnabled(self.current_page < self.total_pages - 1)
+
+    def prev_page(self):
+        """
+        Visualizza la pagina precedente del PDF.
+        """
+        if self.current_page > 0:
+            self.current_page -= 1
+            self.mostra_pagina_corrente()
+            self.aggiorna_controlli_navigazione()
+
+    def next_page(self):
+        """
+        Visualizza la pagina successiva del PDF.
+        """
+        if self.current_page < self.total_pages - 1:
+            self.current_page += 1
+            self.mostra_pagina_corrente()
+            self.aggiorna_controlli_navigazione()
 
     def mostra_dialog_feedback(self, file_path, denominazione, numero_fattura, data_fattura, testo_estratto):
         """
