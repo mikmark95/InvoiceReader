@@ -15,15 +15,15 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton,
     QLabel, QFileDialog, QLineEdit, QMessageBox,
     QComboBox, QHBoxLayout, QListWidget, QListWidgetItem, QCheckBox, QSizePolicy, QSpacerItem,
-    QGraphicsView, QGraphicsScene, QFrame
+    QGraphicsView, QGraphicsScene, QFrame, QMenuBar, QMenu, QMainWindow
 )
-from PyQt6.QtCore import Qt, QRectF
-from PyQt6.QtGui import QFont, QImage, QPixmap
+from PyQt6.QtCore import Qt, QRectF, QUrl
+from PyQt6.QtGui import QFont, QImage, QPixmap, QDesktopServices
 import fitz  # PyMuPDF
 from utils import estrai_info_da_pdf, genera_nome_file
 from pattern_db import PatternDatabase
 
-class FatturaRenamer(QWidget):
+class FatturaRenamer(QMainWindow):
     """
     Classe principale dell'interfaccia grafica per rinominare fatture PDF.
 
@@ -41,6 +41,10 @@ class FatturaRenamer(QWidget):
         self.setWindowTitle("Rinomina Fatture PDF - Modalità Batch")
         self.resize(1000, 600)  # Aumentato per accomodare il preview
 
+        # Crea il widget centrale
+        self.central_widget = QWidget()
+        self.setCentralWidget(self.central_widget)
+
         # Inizializza il database dei pattern
         self.pattern_db = PatternDatabase()
         self.current_extraction_text = None  # Per memorizzare il testo estratto dall'ultimo PDF
@@ -49,6 +53,59 @@ class FatturaRenamer(QWidget):
         self.current_page = 0  # Pagina corrente del PDF
         self.total_pages = 0  # Numero totale di pagine nel PDF
 
+        # Crea il menu bar
+        self.create_menu_bar()
+
+        # Inizializza l'interfaccia utente
+        self.setup_ui()
+
+    def create_menu_bar(self):
+        """
+        Crea la barra dei menu con le opzioni Info e Guida.
+        """
+        menubar = self.menuBar()
+
+        # Menu Info
+        info_menu = menubar.addMenu("Info")
+        about_action = info_menu.addAction("Informazioni")
+        about_action.triggered.connect(self.show_about_dialog)
+
+        # Menu Guida
+        help_menu = menubar.addMenu("Guida")
+        readme_action = help_menu.addAction("Apri README")
+        readme_action.triggered.connect(self.open_readme)
+
+    def show_about_dialog(self):
+        """
+        Mostra un dialog con informazioni sull'autore e la versione dell'applicazione.
+        """
+        QMessageBox.about(
+            self,
+            "Informazioni su InvoiceReader",
+            "<h3>InvoiceReader - Rinomina Fatture PDF</h3>"
+            "<p><b>Versione:</b> 1.2.0 (Maggio 2025)</p>"
+            "<p><b>Autore:</b> Michele Marchetti (@mikmark95)</p>"
+            "<p><b>Copyright:</b> © 2025 Marchetti Michele. Tutti i diritti riservati.</p>"
+            "<p>Applicazione per rinominare automaticamente file PDF di fatture e note di credito.</p>"
+        )
+
+    def open_readme(self):
+        """
+        Apre il file README.md nel browser predefinito.
+        """
+        readme_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "README.md")
+        if os.path.exists(readme_path):
+            # Usa un URL con schema 'https' per forzare l'apertura nel browser predefinito
+            url = QUrl.fromLocalFile(readme_path)
+            url.setScheme("https")
+            QDesktopServices.openUrl(url)
+        else:
+            QMessageBox.warning(self, "File non trovato", "Il file README.md non è stato trovato.")
+
+    def setup_ui(self):
+        """
+        Inizializza tutti i componenti dell'interfaccia utente.
+        """
         self.setStyleSheet("""
             QWidget {
                 background-color: #9DB4C4;
@@ -244,7 +301,7 @@ class FatturaRenamer(QWidget):
         # Aggiungi il widget dell'anteprima al layout principale
         self.main_layout.addWidget(self.pdf_preview_widget, 1)  # Proporzione 1
 
-        self.setLayout(self.main_layout)
+        self.central_widget.setLayout(self.main_layout)
 
     def apri_file_dialog(self):
         """
