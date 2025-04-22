@@ -14,10 +14,12 @@ from datetime import datetime
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton,
     QLabel, QFileDialog, QLineEdit, QMessageBox,
-    QComboBox, QHBoxLayout, QListWidget, QListWidgetItem, QCheckBox, QSizePolicy, QSpacerItem
+    QComboBox, QHBoxLayout, QListWidget, QListWidgetItem, QCheckBox, QSizePolicy, QSpacerItem,
+    QGraphicsView, QGraphicsScene, QFrame
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import Qt, QRectF
+from PyQt6.QtGui import QFont, QImage, QPixmap
+import fitz  # PyMuPDF
 from utils import estrai_info_da_pdf, genera_nome_file
 from pattern_db import PatternDatabase
 
@@ -37,11 +39,13 @@ class FatturaRenamer(QWidget):
         """
         super().__init__()
         self.setWindowTitle("Rinomina Fatture PDF - Modalità Batch")
-        self.resize(700, 520)
+        self.resize(1000, 600)  # Aumentato per accomodare il preview
 
         # Inizializza il database dei pattern
         self.pattern_db = PatternDatabase()
         self.current_extraction_text = None  # Per memorizzare il testo estratto dall'ultimo PDF
+        self.current_pdf_path = None  # Per memorizzare il percorso del PDF attualmente selezionato
+        self.zoom_factor = 1.0  # Fattore di zoom iniziale
 
         self.setStyleSheet("""
             QWidget {
@@ -79,13 +83,23 @@ class FatturaRenamer(QWidget):
                 margin-top: 5px;
                 color: black;
             }
+            QGraphicsView {
+                background-color: white;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+            }
         """)
 
         self.file_paths = []
-        self.layout = QVBoxLayout()
-        self.layout.setSpacing(10)
 
-        self.layout.addWidget(QLabel("Seleziona uno o più file PDF e compila i campi:"))
+        # Layout principale orizzontale per dividere form e preview
+        self.main_layout = QHBoxLayout()
+
+        # Layout per il form a sinistra
+        self.form_layout = QVBoxLayout()
+        self.form_layout.setSpacing(10)
+
+        self.form_layout.addWidget(QLabel("Seleziona uno o più file PDF e compila i campi:"))
 
         def crea_riga(label_txt, widget):
             riga = QHBoxLayout()
@@ -99,33 +113,33 @@ class FatturaRenamer(QWidget):
         # Campi di input
         self.tipo_combo = QComboBox()
         self.tipo_combo.addItems(["Fattura", "Nota di credito"])
-        self.layout.addLayout(crea_riga("Tipologia:", self.tipo_combo))
+        self.form_layout.addLayout(crea_riga("Tipologia:", self.tipo_combo))
 
         # Checkbox Generico
         self.generico_checkbox = QCheckBox("Generico")
         self.generico_checkbox.stateChanged.connect(self.toggle_tipo_combo)
-        self.layout.addLayout(crea_riga("", self.generico_checkbox))
+        self.form_layout.addLayout(crea_riga("", self.generico_checkbox))
 
         self.stagione_combo = QComboBox()
         self.stagione_combo.addItems(["PE", "AI", "CONTINUATIVO"])
-        self.layout.addLayout(crea_riga("Stagione:", self.stagione_combo))
+        self.form_layout.addLayout(crea_riga("Stagione:", self.stagione_combo))
 
         self.anno_input = QLineEdit()
         self.anno_input.setPlaceholderText("Es. 2025")
-        self.layout.addLayout(crea_riga("Anno:", self.anno_input))
+        self.form_layout.addLayout(crea_riga("Anno:", self.anno_input))
 
         self.genere_combo = QComboBox()
         self.genere_combo.addItems(["UOMO", "DONNA"])
-        self.layout.addLayout(crea_riga("Genere:", self.genere_combo))
+        self.form_layout.addLayout(crea_riga("Genere:", self.genere_combo))
 
         self.cartella_checkbox = QCheckBox("Sposta i file in cartelle con nome del fornitore")
-        self.layout.addLayout(crea_riga("", self.cartella_checkbox))
+        self.form_layout.addLayout(crea_riga("", self.cartella_checkbox))
 
         # Checkbox per l'apprendimento automatico
         self.ml_checkbox = QCheckBox("Abilita apprendimento automatico")
         self.ml_checkbox.setChecked(False)  # Non abilitato di default
         self.ml_checkbox.setToolTip("Quando abilitato, il sistema impara dai documenti elaborati creando nuovi pattern di estrazione per migliorare il riconoscimento futuro")
-        self.layout.addLayout(crea_riga("", self.ml_checkbox))
+        self.form_layout.addLayout(crea_riga("", self.ml_checkbox))
 
         # Pulsanti file management
         self.file_button_layout = QHBoxLayout()
@@ -150,25 +164,64 @@ class FatturaRenamer(QWidget):
         self.file_button_layout.addWidget(self.button_remove)
         self.file_button_layout.addWidget(self.button_reset)
         self.file_button_layout.addWidget(self.button_patterns)
-        self.layout.addLayout(self.file_button_layout)
+        self.form_layout.addLayout(self.file_button_layout)
 
         # Lista file
         self.file_list = QListWidget()
         self.file_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
-        self.layout.addWidget(self.file_list)
+        self.file_list.currentRowChanged.connect(self.aggiorna_anteprima_pdf)  # Connetti il segnale di cambio selezione
+        self.form_layout.addWidget(self.file_list)
 
         # Pulsante di processo
         self.button_process = QPushButton("🚀 Avvia Rinomina")
         self.button_process.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.button_process.clicked.connect(self.processa_file)
-        self.layout.addWidget(self.button_process)
+        self.form_layout.addWidget(self.button_process)
 
         # Output
         self.label_output = QLabel("")
         self.label_output.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.layout.addWidget(self.label_output)
+        self.form_layout.addWidget(self.label_output)
 
-        self.setLayout(self.layout)
+        # Aggiungi il form layout al layout principale
+        self.main_layout.addLayout(self.form_layout, 1)  # Proporzione 1
+
+        # Crea il widget per l'anteprima PDF
+        self.pdf_preview_widget = QWidget()
+        self.pdf_preview_container = QVBoxLayout(self.pdf_preview_widget)
+
+        # Titolo per l'anteprima
+        self.preview_title = QLabel("Anteprima PDF")
+        self.preview_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.pdf_preview_container.addWidget(self.preview_title)
+
+        # Crea la vista grafica per l'anteprima PDF
+        self.pdf_scene = QGraphicsScene()
+        self.pdf_view = QGraphicsView(self.pdf_scene)
+        self.pdf_view.setFrameShape(QFrame.Shape.StyledPanel)
+        self.pdf_view.setMinimumWidth(400)
+        self.pdf_preview_container.addWidget(self.pdf_view)
+
+        # Aggiungi controlli di zoom
+        zoom_layout = QHBoxLayout()
+        self.zoom_in_button = QPushButton("🔍+")
+        self.zoom_out_button = QPushButton("🔍-")
+        self.zoom_reset_button = QPushButton("Reset Zoom")
+        self.zoom_in_button.clicked.connect(self.zoom_in)
+        self.zoom_out_button.clicked.connect(self.zoom_out)
+        self.zoom_reset_button.clicked.connect(self.zoom_reset)
+        zoom_layout.addWidget(self.zoom_in_button)
+        zoom_layout.addWidget(self.zoom_out_button)
+        zoom_layout.addWidget(self.zoom_reset_button)
+        self.pdf_preview_container.addLayout(zoom_layout)
+
+        # Nascondi l'intero widget di anteprima inizialmente
+        self.pdf_preview_widget.setVisible(False)
+
+        # Aggiungi il widget dell'anteprima al layout principale
+        self.main_layout.addWidget(self.pdf_preview_widget, 1)  # Proporzione 1
+
+        self.setLayout(self.main_layout)
 
     def apri_file_dialog(self):
         """
@@ -183,6 +236,10 @@ class FatturaRenamer(QWidget):
                 self.file_paths.append(path)
                 self.file_list.addItem(QListWidgetItem(os.path.basename(path)))
 
+        # Se è stato aggiunto almeno un file, seleziona il primo
+        if len(self.file_paths) > 0 and self.file_list.currentRow() == -1:
+            self.file_list.setCurrentRow(0)
+
     def rimuovi_file(self):
         """
         Rimuove il file selezionato dalla lista dei file da processare.
@@ -191,6 +248,11 @@ class FatturaRenamer(QWidget):
         if selected >= 0:
             self.file_paths.pop(selected)
             self.file_list.takeItem(selected)
+
+            # Se non ci sono più file, nascondi l'anteprima
+            if len(self.file_paths) == 0:
+                self.pdf_preview_widget.setVisible(False)
+                self.preview_title.setText("Anteprima PDF")
 
     def toggle_tipo_combo(self, state):
         """
@@ -249,6 +311,147 @@ class FatturaRenamer(QWidget):
         self.cartella_checkbox.setChecked(False)
         self.ml_checkbox.setChecked(False)  # Ripristina l'apprendimento automatico a disabilitato
         self.label_output.setText("")
+
+        # Nascondi l'anteprima PDF
+        self.pdf_preview_widget.setVisible(False)
+        self.preview_title.setText("Anteprima PDF")
+        self.current_pdf_path = None
+
+    def resizeEvent(self, event):
+        """
+        Gestisce il ridimensionamento della finestra.
+
+        Quando la finestra viene ridimensionata, adatta l'anteprima PDF
+        per mantenere le proporzioni corrette.
+
+        Args:
+            event: L'evento di ridimensionamento
+        """
+        super().resizeEvent(event)
+
+        # Se c'è un PDF attualmente visualizzato, adattalo alla nuova dimensione
+        if self.current_pdf_path and self.pdf_preview_widget.isVisible():
+            # Ottieni gli elementi nella scena
+            items = self.pdf_scene.items()
+            if items:
+                # Prendi il primo elemento (il pixmap del PDF)
+                pixmap_item = items[0]
+                # Adatta la vista all'elemento, tenendo conto del fattore di zoom
+                if self.zoom_factor == 1.0:
+                    self.pdf_view.fitInView(pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)
+                else:
+                    # Mantieni lo zoom corrente
+                    self.pdf_view.resetTransform()
+                    self.pdf_view.scale(self.zoom_factor, self.zoom_factor)
+
+    def zoom_in(self):
+        """
+        Aumenta il livello di zoom dell'anteprima PDF.
+        """
+        if not self.current_pdf_path or not self.pdf_preview_widget.isVisible():
+            return
+
+        # Aumenta il fattore di zoom del 20%
+        self.zoom_factor *= 1.2
+
+        # Applica il nuovo zoom
+        self.pdf_view.resetTransform()
+        self.pdf_view.scale(self.zoom_factor, self.zoom_factor)
+
+    def zoom_out(self):
+        """
+        Diminuisce il livello di zoom dell'anteprima PDF.
+        """
+        if not self.current_pdf_path or not self.pdf_preview_widget.isVisible():
+            return
+
+        # Diminuisce il fattore di zoom del 20%
+        self.zoom_factor *= 0.8
+
+        # Applica il nuovo zoom
+        self.pdf_view.resetTransform()
+        self.pdf_view.scale(self.zoom_factor, self.zoom_factor)
+
+    def zoom_reset(self):
+        """
+        Reimposta il livello di zoom dell'anteprima PDF al valore predefinito.
+        """
+        if not self.current_pdf_path or not self.pdf_preview_widget.isVisible():
+            return
+
+        # Reimposta il fattore di zoom
+        self.zoom_factor = 1.0
+
+        # Ottieni gli elementi nella scena
+        items = self.pdf_scene.items()
+        if items:
+            # Prendi il primo elemento (il pixmap del PDF)
+            pixmap_item = items[0]
+            # Adatta la vista all'elemento
+            self.pdf_view.fitInView(pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)
+
+    def aggiorna_anteprima_pdf(self, current_row):
+        """
+        Aggiorna l'anteprima del PDF quando viene selezionato un file dalla lista.
+
+        Args:
+            current_row (int): L'indice del file selezionato nella lista
+        """
+        # Pulisci la scena grafica
+        self.pdf_scene.clear()
+
+        # Se non c'è nessun file selezionato, nascondi l'anteprima
+        if current_row < 0 or current_row >= len(self.file_paths):
+            self.pdf_preview_widget.setVisible(False)
+            self.preview_title.setText("Anteprima PDF")
+            self.current_pdf_path = None
+            return
+
+        # Ottieni il percorso del file selezionato
+        file_path = self.file_paths[current_row]
+        self.current_pdf_path = file_path
+
+        # Resetta il fattore di zoom quando si cambia documento
+        self.zoom_factor = 1.0
+
+        try:
+            # Apri il PDF con PyMuPDF
+            doc = fitz.open(file_path)
+
+            # Prendi la prima pagina per l'anteprima
+            page = doc[0]
+
+            # Renderizza la pagina come immagine
+            pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))  # Scala 1.5 per una migliore qualità
+
+            # Converti l'immagine in QImage
+            img = QImage(pix.samples, pix.width, pix.height, pix.stride, QImage.Format.Format_RGB888)
+
+            # Crea un QPixmap dall'immagine
+            pixmap = QPixmap.fromImage(img)
+
+            # Aggiungi l'immagine alla scena
+            self.pdf_scene.addPixmap(pixmap)
+
+            # Adatta la vista alla scena
+            self.pdf_view.setScene(self.pdf_scene)
+            self.pdf_view.fitInView(QRectF(0, 0, pixmap.width(), pixmap.height()), Qt.AspectRatioMode.KeepAspectRatio)
+
+            # Mostra l'anteprima
+            self.pdf_preview_widget.setVisible(True)
+
+            # Aggiorna il titolo con il nome del file
+            self.preview_title.setText(f"Anteprima: {os.path.basename(file_path)}")
+
+            # Chiudi il documento
+            doc.close()
+
+        except Exception as e:
+            # In caso di errore, nascondi l'anteprima e mostra un messaggio
+            self.pdf_preview_widget.setVisible(False)
+            self.preview_title.setText(f"Errore nell'anteprima: {str(e)}")
+            logging.error(f"Errore durante la generazione dell'anteprima PDF: {str(e)}")
+            logging.debug(traceback.format_exc())
 
     def mostra_dialog_feedback(self, file_path, denominazione, numero_fattura, data_fattura, testo_estratto):
         """
