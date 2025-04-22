@@ -1,0 +1,16 @@
+pyinstaller --noconsole --onefile ^
+--name "Invoice Reader" ^
+--icon="C:\Users\emmes\Documents\Python Scripts\InvoiceReader\assets\invoice.ico" ^
+--hidden-import=PyQt6.QtWidgets ^
+--hidden-import=PyQt6.QtGui ^
+--hidden-import=PyQt6.QtCore ^
+--hidden-import=fitz ^
+--exclude-module=trio ^
+--exclude-module=trio._core ^
+--exclude-module=trio._subprocess_platform ^
+--exclude-module=trio.testing ^
+--exclude-module=anyio ^
+--exclude-module=anyio._core ^
+--exclude-module=anyio._backends ^
+--exclude-module=anyio.abc ^
+main.py
